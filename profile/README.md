@@ -1,7 +1,7 @@
 # SailPoint ❤️ Open Source
 
 <div align="center">
-    <img height="200" src="./codey-surfing.png" alt="Logo">
+    <img height="200" src="https://github.com/sailpoint-oss/.github/raw/main/profile/codoey-surfing.png" alt="Logo">
 </div>
 
 We understand that Identity at scale can, many times, require development. Over
