@@ -2,11 +2,6 @@
 <h1 align=center"> SailPoint ❤️ Open Source </h1>
     <img height="200" src="https://github.com/sailpoint-oss/.github/raw/main/profile/codoey-surfing.png" alt="Logo">
 
-We understand that identity at scale can, many times, require development. Over
-time you will find a great deal of technical resources in our GitHub for
-extending your SailPoint platform. We will continue to provide tools to help you
-in this endeavour, and those tools will be open source.
-
 Great things to come very soon! In the mean time, to learn more, checkout the
 [Developer Community](https://developer.sailpoint.com/) or join the discussion
 with other developers in the
