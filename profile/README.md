@@ -6,6 +6,6 @@ Great things to come very soon! In the mean time, to learn more, checkout the
 [Developer Community](https://developer.sailpoint.com/) or join the discussion
 with other developers in the
 [Developer Community forum](https://developer.sailpoint.com/discuss) to talk
-about extending our platform, using the our tools, and more!
+about extending our platform, using our tools, and more!
 
 </div>
