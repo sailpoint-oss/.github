@@ -8,5 +8,5 @@ Find information on the community developed repositories on the [Developer CoLab
 
 Checkout the [Developer Community](https://developer.sailpoint.com/) or join the discussion with other developers in the [Developer Community forum](https://developer.sailpoint.com/discuss) to talk about extending our platform, using our tools, and more!
 
-For more information on the Developer Community CoLab or if you want participate in the see [information shared](https://developer.sailpoint.com/discuss/t/the-developer-community-colab-a-new-way-to-find-build-and-collaborate-on-extensibility-solutions) in the Developer Community forum.
+For more information on the Developer Community CoLab or if you want participate, see [information shared](https://developer.sailpoint.com/discuss/t/the-developer-community-colab-a-new-way-to-find-build-and-collaborate-on-extensibility-solutions) in the Developer Community forum.
 </div>
