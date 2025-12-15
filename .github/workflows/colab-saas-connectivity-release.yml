@@ -35,17 +35,17 @@ jobs:
             - name: Check version change
               id: version_check
               run: |
-                  # Check if there are any releases in the repository
-                  RELEASE_COUNT=$(gh release list --limit 1 2>/dev/null | wc -l || echo "0")
+                  # Check if a release exists for the current version
+                  CURRENT_VERSION_RELEASE=$(gh release view v${{ env.PACKAGE_VERSION }} 2>/dev/null || echo "")
                   
-                  if [ "$RELEASE_COUNT" -eq 0 ]; then
-                    echo "No releases found in repository. Creating first release."
+                  if [ -z "$CURRENT_VERSION_RELEASE" ]; then
+                    echo "No release found for version ${{ env.PACKAGE_VERSION }}. Creating release."
                     echo "VERSION_CHANGED=true" >> $GITHUB_ENV
                   else
                     # Check if version changed in package.json
                     VERSION_CHANGED=$(git diff HEAD^ HEAD -- "package.json" | grep '\"version\"' || true)
                     if [ -z "$VERSION_CHANGED" ]; then
-                      echo "package.json version has not changed. Skipping release."
+                      echo "package.json version has not changed and release already exists. Skipping release."
                       echo "VERSION_CHANGED=false" >> $GITHUB_ENV
                     else
                       echo "Version changed detected. Proceeding with release."
