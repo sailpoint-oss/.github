@@ -33,18 +33,24 @@ jobs:
                   echo "CONNECTOR_NAME=$(jq -r .name package.json)" >> $GITHUB_ENV
 
             - name: Check version change
+              id: version_check
               run: |
-                  VERSION_CHANGED=$(git diff HEAD^ HEAD -- "package.json" | grep '\"version\"')
+                  VERSION_CHANGED=$(git diff HEAD^ HEAD -- "package.json" | grep '\"version\"' || true)
                   if [ -z "$VERSION_CHANGED" ]; then
-                    echo "package.json version has not changed."
-                    exit 1
+                    echo "package.json version has not changed. Skipping release."
+                    echo "VERSION_CHANGED=false" >> $GITHUB_ENV
+                  else
+                    echo "Version changed detected. Proceeding with release."
+                    echo "VERSION_CHANGED=true" >> $GITHUB_ENV
                   fi
 
             - name: Get Commits since last Release
+              if: env.VERSION_CHANGED == 'true'
               id: changes
               uses: simbo/changes-since-last-release-action@v1
 
             - name: Create GitHub release
+              if: env.VERSION_CHANGED == 'true'
               run: |
                   gh release create v${{ env.PACKAGE_VERSION }} \
                     --title "Release v${{ env.PACKAGE_VERSION }}" \
@@ -54,6 +60,7 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Upload file to release
+              if: env.VERSION_CHANGED == 'true'
               run: |
                   gh release upload v${{ env.PACKAGE_VERSION }} ./dist/${{ env.CONNECTOR_NAME }}-${{ env.PACKAGE_VERSION }}.zip --clobber
               env:
