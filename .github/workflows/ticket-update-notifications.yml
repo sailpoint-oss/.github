@@ -1,0 +1,57 @@
+name: Ticket update notifications
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  notify-ticket-owner:
+    name: Notify assignees about ticket update requests
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+
+    steps:
+      - name: Notify assignees
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.comment.body || '';
+            const issue = context.payload.issue;
+
+            const asksForUpdate = /\b(update|status|progress|eta|follow\s*up)\b/i.test(body);
+            const ticketMatches = body.match(/\b(?:ticket|case|incident|request|sr|inc|req)(?:\s+number)?[\s:#-]*([A-Z]{1,10}-\d+|\d{3,})\b/gi) || [];
+
+            if (!asksForUpdate || ticketMatches.length === 0) {
+              core.info('Comment does not ask for a ticket update.');
+              return;
+            }
+
+            const commenter = context.payload.comment.user.login;
+            const assignees = (issue.assignees || [])
+              .map((assignee) => assignee.login)
+              .filter((login) => login !== commenter);
+
+            const recipients = assignees.length > 0
+              ? assignees
+              : [issue.user.login].filter((login) => login !== commenter);
+
+            if (recipients.length === 0) {
+              core.info('No recipient to notify.');
+              return;
+            }
+
+            const uniqueTickets = [...new Set(ticketMatches.map((ticket) => ticket.trim()))];
+            const recipientMentions = recipients.map((login) => `@${login}`).join(' ');
+            const ticketList = uniqueTickets.join(', ');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: `${recipientMentions} @${commenter} asked for an update on ${ticketList}. Please follow up when you have a chance.`
+            });

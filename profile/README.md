@@ -10,3 +10,7 @@ Checkout the [Developer Community](https://developer.sailpoint.com/) or join the
 
 For more information on the Developer Community CoLab or if you want participate, see [information shared](https://developer.sailpoint.com/discuss/t/the-developer-community-colab-a-new-way-to-find-build-and-collaborate-on-extensibility-solutions) in the Developer Community forum.
 </div>
+
+## Repository automation
+
+This repository includes a GitHub Actions workflow that watches new issue and pull request comments for ticket update requests. When a comment includes an update-related word, such as `update`, `status`, `progress`, `ETA`, or `follow up`, and a ticket-like reference, such as `ticket number 12345`, `case ABC-123`, or `incident INC-123`, the workflow mentions the assignees so they get a GitHub notification.
