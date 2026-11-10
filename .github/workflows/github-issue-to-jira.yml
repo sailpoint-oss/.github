@@ -2,7 +2,7 @@
 #
 # Usage in a caller repository (.github/workflows/github-issue-to-jira.yml):
 #
-#   name: Create Jira Issue
+#   name: Create Jira Story from GitHub Issue
 #   on:
 #     issues:
 #       types: [opened]
@@ -11,14 +11,15 @@
 #       permissions:
 #         issues: write
 #       uses: sailpoint-oss/.github/.github/workflows/github-issue-to-jira.yml@main
-#       with:
-#         component: 'developer.sailpoint.com'   # optional
 #       secrets: inherit
 #
 # Required secrets (organization or repository level):
 #   JIRA_BASE_URL   - base URL of the Jira Cloud site, for example https://sailpoint.atlassian.net
 #   JIRA_USER_EMAIL - email of the Jira account that creates the issue
 #   JIRA_API_TOKEN  - API token for that Jira account
+#
+# On an `issues` event, the workflow reads the issue data from the event.
+# For other triggers (for example a manual test), pass the issue-* inputs.
 
 name: 'Create Jira Issue from GitHub Issue'
 
@@ -45,6 +46,30 @@ on:
         description: 'GitHub label to add to the issue after the Jira issue is created'
         type: string
         default: 'jira-synced'
+      issue-title:
+        description: 'Issue title. Overrides the event data.'
+        type: string
+        default: ''
+      issue-body:
+        description: 'Issue body. Overrides the event data.'
+        type: string
+        default: ''
+      issue-url:
+        description: 'Issue URL. Overrides the event data.'
+        type: string
+        default: ''
+      issue-number:
+        description: 'Issue number. Overrides the event data. If empty and there is no issue event, the workflow does not update GitHub.'
+        type: string
+        default: ''
+      issue-author:
+        description: 'Issue author login. Overrides the event data.'
+        type: string
+        default: ''
+      dry-run:
+        description: 'If true, check the Jira credentials and print the payload, but do not create the Jira issue'
+        type: boolean
+        default: false
     secrets:
       JIRA_BASE_URL:
         required: true
@@ -61,7 +86,7 @@ jobs:
   create_jira_issue:
     name: Create Jira Issue
     runs-on: ubuntu-latest
-    if: github.event_name == 'issues' && github.event.action == 'opened'
+    if: inputs.issue-title != '' || (github.event_name == 'issues' && github.event.action == 'opened')
     permissions:
       issues: write
     outputs:
@@ -77,20 +102,28 @@ jobs:
           ISSUE_TYPE: ${{ inputs.issue-type }}
           LABELS: github-issue,${{ inputs.labels }}
           COMPONENT: ${{ inputs.component }}
+          DRY_RUN: ${{ inputs.dry-run }}
           # Issue content is untrusted input. Pass it through env, never inline it in the script.
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
-          ISSUE_URL: ${{ github.event.issue.html_url }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_TITLE: ${{ inputs.issue-title || github.event.issue.title }}
+          ISSUE_BODY: ${{ inputs.issue-body || github.event.issue.body }}
+          ISSUE_URL: ${{ inputs.issue-url || github.event.issue.html_url }}
+          ISSUE_NUMBER: ${{ inputs.issue-number || github.event.issue.number }}
+          ISSUE_AUTHOR: ${{ inputs.issue-author || github.event.issue.user.login || github.actor }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          summary="[${REPO}#${ISSUE_NUMBER}] ${ISSUE_TITLE}"
+          JIRA_BASE_URL="${JIRA_BASE_URL%/}"
+          auth=(-u "${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}")
+
+          if [ -n "$ISSUE_NUMBER" ]; then
+            summary="[${REPO}#${ISSUE_NUMBER}] ${ISSUE_TITLE}"
+          else
+            summary="[${REPO}] ${ISSUE_TITLE}"
+          fi
           summary="${summary:0:250}"
 
-          description="GitHub issue: ${ISSUE_URL}
+          description="GitHub issue: ${ISSUE_URL:-none}
           Opened by: ${ISSUE_AUTHOR}
 
           ${ISSUE_BODY:-No description provided.}"
@@ -115,11 +148,27 @@ jobs:
               )
             }')
 
-          http_code=$(curl -sS -o response.json -w '%{http_code}' \
-            -u "${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}" \
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run: checking the Jira credentials and the project."
+            for path in "myself" "project/${PROJECT_KEY}"; do
+              code=$(curl -sS -o check.json -w '%{http_code}' "${auth[@]}" \
+                -H 'Accept: application/json' "${JIRA_BASE_URL}/rest/api/2/${path}")
+              if [ "$code" != "200" ]; then
+                echo "::error::GET /rest/api/2/${path} returned HTTP ${code}"
+                cat check.json
+                exit 1
+              fi
+              echo "GET /rest/api/2/${path}: OK"
+            done
+            echo "Dry run: this payload would be sent to Jira:"
+            echo "$payload" | jq .
+            exit 0
+          fi
+
+          http_code=$(curl -sS -o response.json -w '%{http_code}' "${auth[@]}" \
             -H 'Content-Type: application/json' \
             -H 'Accept: application/json' \
-            -X POST "${JIRA_BASE_URL%/}/rest/api/2/issue" \
+            -X POST "${JIRA_BASE_URL}/rest/api/2/issue" \
             --data "$payload")
 
           if [ "$http_code" != "201" ]; then
@@ -129,15 +178,15 @@ jobs:
           fi
 
           key=$(jq -r '.key' response.json)
-          echo "Created Jira issue ${key}"
+          echo "Created Jira issue ${key}: ${JIRA_BASE_URL}/browse/${key}"
           echo "jira-key=${key}" >> "$GITHUB_OUTPUT"
-          echo "jira-url=${JIRA_BASE_URL%/}/browse/${key}" >> "$GITHUB_OUTPUT"
 
       - name: Comment on GitHub issue
+        if: ${{ !inputs.dry-run && (inputs.issue-number != '' || github.event_name == 'issues') }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_NUMBER: ${{ inputs.issue-number || github.event.issue.number }}
           JIRA_KEY: ${{ steps.create.outputs.jira-key }}
           GITHUB_LABEL: ${{ inputs.github-label }}
         run: |

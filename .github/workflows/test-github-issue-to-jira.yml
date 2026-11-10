@@ -1,0 +1,39 @@
+# Manual test for the github-issue-to-jira.yml reusable workflow.
+# Start it from the Actions tab, or with:
+#   gh workflow run test-github-issue-to-jira.yml --repo sailpoint-oss/.github -f dry-run=true
+#
+# Dry run (the default) checks the Jira credentials and the DEVREL project,
+# and prints the payload. It does not create anything.
+# If dry-run is false, the workflow creates a real Jira Story. Delete the Story after the test.
+
+name: 'Test: Create Jira Issue from GitHub Issue'
+
+on:
+  workflow_dispatch:
+    inputs:
+      title:
+        description: 'Title of the test issue'
+        type: string
+        default: 'Test: GitHub issue to Jira automation'
+      body:
+        description: 'Body of the test issue'
+        type: string
+        default: 'This is a test issue from the test-github-issue-to-jira workflow. Delete this Story.'
+      dry-run:
+        description: 'Check the configuration only. Do not create a Jira Story.'
+        type: boolean
+        default: true
+
+jobs:
+  test:
+    permissions:
+      issues: write
+    # Local reference: the test uses the version of the workflow on the selected branch.
+    uses: ./.github/workflows/github-issue-to-jira.yml
+    with:
+      issue-title: ${{ inputs.title }}
+      issue-body: ${{ inputs.body }}
+      issue-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      labels: 'automation-test'
+      dry-run: ${{ inputs.dry-run }}
+    secrets: inherit
