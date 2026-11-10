@@ -14,7 +14,9 @@
 #       secrets: inherit
 #
 # Required secrets (organization or repository level):
-#   JIRA_BASE_URL   - base URL of the Jira Cloud site, for example https://sailpoint.atlassian.net
+#   JIRA_BASE_URL   - Jira API base URL. For a scoped API token, use
+#                     https://api.atlassian.com/ex/jira/<cloudId>.
+#                     For a classic API token, use the site URL, for example https://sailpoint.atlassian.net.
 #   JIRA_USER_EMAIL - email of the Jira account that creates the issue
 #   JIRA_API_TOKEN  - API token for that Jira account
 #
@@ -178,7 +180,7 @@ jobs:
           fi
 
           key=$(jq -r '.key' response.json)
-          echo "Created Jira issue ${key}: ${JIRA_BASE_URL}/browse/${key}"
+          echo "Created Jira issue ${key}"
           echo "jira-key=${key}" >> "$GITHUB_OUTPUT"
 
       - name: Comment on GitHub issue
