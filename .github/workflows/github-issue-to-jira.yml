@@ -1,0 +1,151 @@
+# Reusable workflow: create a Jira issue from a new GitHub issue.
+#
+# Usage in a caller repository (.github/workflows/github-issue-to-jira.yml):
+#
+#   name: Create Jira Issue
+#   on:
+#     issues:
+#       types: [opened]
+#   jobs:
+#     jira:
+#       permissions:
+#         issues: write
+#       uses: sailpoint-oss/.github/.github/workflows/github-issue-to-jira.yml@main
+#       with:
+#         component: 'developer.sailpoint.com'   # optional
+#       secrets: inherit
+#
+# Required secrets (organization or repository level):
+#   JIRA_BASE_URL   - base URL of the Jira Cloud site, for example https://sailpoint.atlassian.net
+#   JIRA_USER_EMAIL - email of the Jira account that creates the issue
+#   JIRA_API_TOKEN  - API token for that Jira account
+
+name: 'Create Jira Issue from GitHub Issue'
+
+on:
+  workflow_call:
+    inputs:
+      project-key:
+        description: 'Jira project key for the new issue'
+        type: string
+        default: 'DEVREL'
+      issue-type:
+        description: 'Jira issue type name'
+        type: string
+        default: 'Story'
+      labels:
+        description: 'Comma-separated extra Jira labels. The github-issue label is always added.'
+        type: string
+        default: ''
+      component:
+        description: 'Optional Jira component name to add to the issue'
+        type: string
+        default: ''
+      github-label:
+        description: 'GitHub label to add to the issue after the Jira issue is created'
+        type: string
+        default: 'jira-synced'
+    secrets:
+      JIRA_BASE_URL:
+        required: true
+      JIRA_USER_EMAIL:
+        required: true
+      JIRA_API_TOKEN:
+        required: true
+    outputs:
+      jira-key:
+        description: 'Key of the created Jira issue'
+        value: ${{ jobs.create_jira_issue.outputs.jira-key }}
+
+jobs:
+  create_jira_issue:
+    name: Create Jira Issue
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    permissions:
+      issues: write
+    outputs:
+      jira-key: ${{ steps.create.outputs.jira-key }}
+    steps:
+      - name: Create Jira issue
+        id: create
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          PROJECT_KEY: ${{ inputs.project-key }}
+          ISSUE_TYPE: ${{ inputs.issue-type }}
+          LABELS: github-issue,${{ inputs.labels }}
+          COMPONENT: ${{ inputs.component }}
+          # Issue content is untrusted input. Pass it through env, never inline it in the script.
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          summary="[${REPO}#${ISSUE_NUMBER}] ${ISSUE_TITLE}"
+          summary="${summary:0:250}"
+
+          description="GitHub issue: ${ISSUE_URL}
+          Opened by: ${ISSUE_AUTHOR}
+
+          ${ISSUE_BODY:-No description provided.}"
+
+          payload=$(jq -n \
+            --arg project "$PROJECT_KEY" \
+            --arg type "$ISSUE_TYPE" \
+            --arg summary "$summary" \
+            --arg description "$description" \
+            --arg labels "$LABELS" \
+            --arg component "$COMPONENT" \
+            '{
+              fields: (
+                {
+                  project: { key: $project },
+                  issuetype: { name: $type },
+                  summary: $summary,
+                  description: $description,
+                  labels: ($labels | split(",") | map(gsub("^\\s+|\\s+$"; "") | gsub("\\s+"; "-")) | map(select(length > 0)) | unique)
+                }
+                + (if $component != "" then { components: [ { name: $component } ] } else {} end)
+              )
+            }')
+
+          http_code=$(curl -sS -o response.json -w '%{http_code}' \
+            -u "${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json' \
+            -X POST "${JIRA_BASE_URL%/}/rest/api/2/issue" \
+            --data "$payload")
+
+          if [ "$http_code" != "201" ]; then
+            echo "::error::Jira returned HTTP ${http_code}"
+            cat response.json
+            exit 1
+          fi
+
+          key=$(jq -r '.key' response.json)
+          echo "Created Jira issue ${key}"
+          echo "jira-key=${key}" >> "$GITHUB_OUTPUT"
+          echo "jira-url=${JIRA_BASE_URL%/}/browse/${key}" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on GitHub issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          JIRA_KEY: ${{ steps.create.outputs.jira-key }}
+          GITHUB_LABEL: ${{ inputs.github-label }}
+        run: |
+          set -euo pipefail
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPO" \
+            --body "Thank you for the report. We are tracking this issue internally as ${JIRA_KEY}."
+          if [ -n "$GITHUB_LABEL" ]; then
+            gh label create "$GITHUB_LABEL" --repo "$REPO" --color 0052CC \
+              --description "A Jira issue exists for this GitHub issue" 2>/dev/null || true
+            gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --add-label "$GITHUB_LABEL"
+          fi
